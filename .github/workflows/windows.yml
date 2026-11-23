@@ -1,0 +1,111 @@
+name: Windows build and tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install and test interface
+        working-directory: ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm test
+      - name: Check and test Studio plugin
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'studioline-luau'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $zip = Join-Path $directory 'luau.zip'
+          Invoke-WebRequest -Uri 'https://github.com/luau-lang/luau/releases/download/0.748/luau-windows.zip' -OutFile $zip
+          if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne '072B06454FB0FA5C355A6AAAE361A01C4D35D120A37D0FE4FD1A880A9FFEBEAB') { throw 'Luau download checksum failed.' }
+          Expand-Archive -Path $zip -DestinationPath $directory -Force
+          & (Join-Path $directory 'luau-compile.exe') plugin/src/StudioLine.server.luau | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Plugin syntax check failed.' }
+          $combined = Join-Path $directory 'mock-test.luau'
+          $source = (Get-Content plugin/tests/mock_environment.luau -Raw) + (Get-Content plugin/src/StudioLine.server.luau -Raw) + (Get-Content plugin/tests/mock_assertions.luau -Raw)
+          [System.IO.File]::WriteAllText($combined, $source, [System.Text.UTF8Encoding]::new($false))
+          & (Join-Path $directory 'luau.exe') $combined
+          if ($LASTEXITCODE -ne 0) { throw 'Plugin mock tests failed.' }
+      - name: Check and test Rust app
+        working-directory: app
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Build Windows executable
+        working-directory: app
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'studioline-target'
+          cargo build --locked --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test the Windows app in a browser
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'studioline-target\release\studioline.exe'
+          $env:STUDIOLINE_DATA_DIR = Join-Path $env:RUNNER_TEMP ('studioline-e2e-' + [guid]::NewGuid())
+          $env:STUDIOLINE_TEST_OUTPUT = Join-Path $env:RUNNER_TEMP 'studioline-playwright-output'
+          Push-Location ui
+          try {
+            npx playwright install chromium --only-shell
+            if ($LASTEXITCODE -ne 0) { throw 'Browser installation failed.' }
+            $app = Start-Process -FilePath $exe -ArgumentList '--no-open' -PassThru
+            $ready = $false
+            for ($i = 0; $i -lt 80; $i++) {
+              try {
+                $status = Invoke-RestMethod -Uri 'http://127.0.0.1:38741/api/health' -TimeoutSec 1
+                if ($status.app -eq 'StudioLine' -and $status.status -eq 'ready') { $ready = $true; break }
+              } catch { Start-Sleep -Milliseconds 250 }
+            }
+            if (-not $ready) { throw 'Local app did not start.' }
+            $second = Start-Process -FilePath $exe -ArgumentList '--no-open' -PassThru
+            if (-not $second.WaitForExit(10000) -or $second.ExitCode -ne 0) { throw 'Single-instance check failed.' }
+            npm run test:e2e
+            if ($LASTEXITCODE -ne 0) { throw 'Browser tests failed.' }
+            if (-not $app.WaitForExit(10000) -or $app.ExitCode -ne 0) { throw 'Shutdown failed.' }
+            $app = Start-Process -FilePath $exe -ArgumentList '--no-open' -PassThru
+            $saved = $null
+            for ($i = 0; $i -lt 80; $i++) {
+              try { $saved = Invoke-RestMethod -Uri 'http://127.0.0.1:38741/api/projects' -TimeoutSec 1; break }
+              catch { Start-Sleep -Milliseconds 250 }
+            }
+            if (@($saved | Where-Object { $_.name -eq '<img src=x onerror=alert(1)>' }).Count -ne 1) { throw 'Project did not survive restart.' }
+            Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:38741/api/shutdown' -Headers @{ 'X-StudioLine-Request' = '1' } | Out-Null
+            if (-not $app.WaitForExit(10000) -or $app.ExitCode -ne 0) { throw 'Restarted app did not shut down.' }
+          } finally {
+            if ($app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+            Pop-Location
+          }
+      - name: Collect Windows executable
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'studioline-target\release\studioline.exe'
+          $output = Join-Path $env:RUNNER_TEMP 'studioline-artifacts'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          Copy-Item $exe (Join-Path $output 'StudioLine.exe')
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudioLine-windows-unsigned
+          path: ${{ runner.temp }}/studioline-artifacts/*
+          if-no-files-found: error

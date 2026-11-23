@@ -1,3 +1,3 @@
-# app
+# Local app
 
-This directory is reserved for future implementation. It currently contains no runnable code.
+Rust and Axum serve the embedded browser interface and a loopback-only project API. SQLite stores projects locally. See the repository README for development setup and current limitations.

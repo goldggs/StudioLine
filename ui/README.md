@@ -1,3 +1,3 @@
-# ui
+# Browser interface
 
-This directory is reserved for future implementation. It currently contains no runnable code.
+React and TypeScript provide the local interface. The build output is embedded in the Rust application. See the repository README for development commands.

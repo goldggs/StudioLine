@@ -4,6 +4,7 @@
 
 # JavaScript
 node_modules/
+/ui/node_modules
 dist/
 coverage/
 
@@ -25,3 +26,6 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# TypeScript build metadata
+*.tsbuildinfo
