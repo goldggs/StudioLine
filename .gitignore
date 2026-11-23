@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/target/
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+
+# Local application data and credentials
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+*.log
+
+# Windows and editors
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
