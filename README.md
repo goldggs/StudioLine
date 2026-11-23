@@ -51,7 +51,6 @@ Project data and logs use the platform's local app-data directory. For isolated 
 - `app/`: Rust app and local API.
 - `ui/`: browser interface.
 - `plugin/`: Luau Studio plugin and simulated tests.
-- `setup/`: obsolete installer experiment, not built or shipped.
 - `scripts/`: temporary developer toolchain setup, build, and test scripts.
 - `tests/`: test guidance and cross-component plans. Browser tests live in `ui/e2e/`; plugin mock tests live in `plugin/tests/`.
 - `docs/`: design philosophy and architecture notes.
