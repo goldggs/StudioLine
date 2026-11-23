@@ -16,12 +16,18 @@ test('shows the selected logo in the header and browser tab', async ({ page, req
   await page.goto('/');
   const logo = page.locator('.brand .mark');
   await expect(logo).toBeVisible();
-  await expect(logo).toHaveAttribute('src', '/studioline-logo.svg');
+  await expect(logo).toHaveAttribute('viewBox', '0 0 1024 1024');
+  await expect(logo.locator('polygon')).toHaveCount(2);
+  await expect(logo.locator('polygon').nth(1)).toHaveAttribute('fill', '#5b806b');
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/studioline-logo.svg');
   const response = await request.get('/studioline-logo.svg');
   expect(response.ok()).toBeTruthy();
   expect(response.headers()['content-type']).toContain('image/svg+xml');
-  expect(await response.text()).toContain('#5b806b');
+  const favicon = await response.text();
+  for (const polygon of await logo.locator('polygon').all()) {
+    expect(favicon).toContain(`points="${await polygon.getAttribute('points')}"`);
+    expect(favicon).toContain(`fill="${await polygon.getAttribute('fill')}"`);
+  }
 });
 
 test('creates a project, returns home, and reopens it after a refresh', async ({ page }) => {
@@ -176,10 +182,20 @@ test('can cancel shutdown and then shut down from the browser', async ({ page })
   await expect(page.getByRole('dialog', { name: 'Shut down StudioLine?' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Once the service is stopped, no logo resource can be fetched from it.
+  await page.route('**/studioline-logo.svg', route => route.abort());
   await page.getByRole('button', { name: 'Shut down' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Shut down' }).click();
   await expect(page.getByRole('heading', { name: 'StudioLine is closed' })).toBeVisible();
+  const shutdownLogo = page.locator('.shutdown-page svg.mark');
+  await expect(shutdownLogo).toBeVisible();
+  await expect(shutdownLogo.locator('polygon')).toHaveCount(2);
+  await expect(shutdownLogo.locator('polygon').nth(1)).toHaveAttribute('fill', '#5b806b');
+  await expect(page.locator('.shutdown-page img')).toHaveCount(0);
   await shutdownMessage;
   plugin.terminate();
+  await expect.poll(() => page.evaluate(() => fetch('/api/health').then(() => true).catch(() => false))).toBe(false);
+  await expect(shutdownLogo).toBeVisible();
+  await expect(shutdownLogo.locator('polygon')).toHaveCount(2);
   expect(errors).toEqual([]);
 });

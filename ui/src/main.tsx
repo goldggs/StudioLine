@@ -4,7 +4,14 @@ import { activateProject, createProject, deleteProject, exportData, inspectPlace
 import AgentConnections from './AgentConnections';
 import './style.css';
 
-function Mark() { return <img className="mark" src="/studioline-logo.svg" alt="" aria-hidden="true"/>; }
+function Mark() {
+  // This must be inline: the shutdown screen remains open after the local server stops.
+  return <svg className="mark" viewBox="0 0 1024 1024" aria-hidden="true" focusable="false">
+    <rect width="1024" height="1024" fill="#ffffff"/>
+    <polygon points="230,276 568,276 568,364 318,364 318,468 553,468 553,748 230,748 230,660 465,660 465,556 230,556" fill="#202b28"/>
+    <polygon points="624,276 712,276 712,660 794,660 794,748 624,748" fill="#5b806b"/>
+  </svg>;
+}
 function Arrow() { return <svg className="arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>; }
 function App() {
   const [projects, setProjects] = useState<Project[]>([]);
